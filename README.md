@@ -95,6 +95,73 @@ ZDI-CAN-33549/
     └── setup-ksmbd.sh
 ```
 
+## Lab topology
+
+Everything runs inside a single QEMU VM. The PoC (`s3rig`) and ksmbd are both local; RDMA traffic flows through a software emulated RoCE device (`rxe0`).
+
+```
+┌───────────────────────────────────────────────────────────────────────────┐
+│                                                                           │
+│  s3rig (userspace)               ksmbd + soft-RoCE (in-kernel)            │
+│  ┌────────────────┐  RDMA (rxe0)  ┌──────────────────────────┐            │
+│  │ rdma_connect   │──────────────►│ smbdirect port 445       │            │
+│  │ SMBDirect neg  │               │                          │            │
+│  │ NTLMv2 auth    │               │ smb2_write():            │            │
+│  │ TREE_CONNECT   │               │  kvmalloc(8) → kmalloc-8 │            │
+│  │ CREATE file    │               │                          │            │
+│  │                │  DMA write    │ smbdirect_rdma_xmit():   │            │
+│  │ SMB2 WRITE:    │──────────────►│  desc[0]=4096 → wrap     │            │
+│  │  Remain=8      │               │  desc[1]=8192 → OOB      │            │
+│  │  desc[0,1]     │               │  buf_len → SIZE_MAX      │            │
+│  └────────────────┘               └──────────────────────────┘            │
+│        │                                    │                             │
+│        │ exit code                          │ logs to dmesg               │
+│        ▼                                    ▼                             │
+│  poc.sh / verify.sh                "BUG: KASAN: slab-out-of-bounds        │
+│  (crash = VULNERABLE)               in rxe_mr_copy"                       │
+│                                     GPF @ 0x4141414141414141              │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+### Traffic flow
+
+```
+ s3rig                            ksmbd (kernel)                  attacker sees
+ ─────                            ──────────────                  ─────────────
+    │                                   │
+    │── RDMA connect (rxe0) ──────────►│
+    │                                   │
+    │── SMB Direct negotiate ─────────►│── v0x0100 accepted
+    │── SMB2 NEGOTIATE ───────────────►│── dialect 0x0302
+    │── SESSION_SETUP (NTLMv2) ───────►│── session established
+    │── TREE_CONNECT ─────────────────►│── tid assigned
+    │── CREATE file ──────────────────►│── handle open
+    │                                   │
+    │── SMB2 WRITE: RemainingBytes=8 ─►│── smb2_write():
+    │   desc[0].length=4096            │     kvmalloc(8) → kmalloc-8
+    │   desc[1].length=8192            │     desc[0] clamped, buf_len=0
+    │                                   │     buf_len -= 0 wraps to SIZE_MAX
+    │                                   │     desc[1] accepted unchecked
+    │                                   │
+    │                                   │── RDMA READ using desc[1]:
+    │                                   │   rxe_mr_copy writes 8192 bytes
+    │                                   │   into 8-byte buffer (8184B OOB)
+    │                                   │
+    │                                   │── KASAN: slab-out-of-bounds
+    │                                   │   in rxe_mr_copy
+    │                                   │── GPF: 0x4141414141414141     kernel crash
+```
+
+### What runs where
+
+| Script | Runs on | Needs | Purpose |
+|---|---|---|---|
+| `setup.sh` | VM (root) | Local | Creates soft-RoCE, ksmbd share, test user, builds s3rig |
+| `check.py` | Anywhere | Network to target | Non-destructive: probes for ksmbd + SMB Direct |
+| `poc.sh` | VM | Local | Wrapper: runs s3rig control + exploit, tells you to check dmesg |
+| `verify.sh` | VM | Local + dmesg | Full dashboard: control → exploit → crash evidence → verdict |
+| `s3rig` | VM | RDMA (rxe0) | Core PoC: RDMA connect + NTLMv2 auth + crafted SMB2 WRITE |
+
 ## Usage
 
 ### Lab environment
