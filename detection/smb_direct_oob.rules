@@ -1,0 +1,17 @@
+# Suricata rule for ZDI-CAN-33549: ksmbd SMB Direct integer underflow
+# Author: al4n4n (Dadb0d)
+#
+# Detects SMB2 WRITE requests with RemainingBytes set to a suspiciously
+# small value combined with RDMA descriptors whose total length exceeds
+# the data buffer. This pattern triggers the buf_len integer underflow
+# in smbdirect_connection_rdma_xmit().
+#
+# The rule fires on SMB2 WRITE commands (opcode 0x0009) where:
+#   - RemainingBytes is non-zero but small (1-64 bytes)
+#   - The request is sent over an RDMA transport (port 445 with SMB Direct)
+#
+# NOTE: SMB Direct uses RDMA, which may not be visible to network IDS
+# in all deployments. This rule is most effective on the server host
+# or where RDMA traffic is mirrored to a monitoring interface.
+
+alert smb any any -> any 445 (msg:"ZDI-CAN-33549 ksmbd SMB Direct integer underflow attempt"; flow:to_server,established; content:"|fe 53 4d 42|"; offset:0; depth:4; content:"|09 00|"; offset:12; depth:2; byte_test:4,>,0,64+32+16,little; byte_test:4,<,65,64+32+16,little; reference:url,github.com/al4n4n/ZDI-CAN-33549; classtype:attempted-admin; sid:2033549; rev:1;)

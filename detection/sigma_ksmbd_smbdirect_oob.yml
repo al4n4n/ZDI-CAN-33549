@@ -1,0 +1,33 @@
+title: ksmbd SMB Direct OOB Write (ZDI-CAN-33549)
+id: c4f8e5a1-3b49-4d2e-a8c7-5e1f9b2d6a03
+status: experimental
+description: |
+  Detects kernel log indicators of the ksmbd SMB Direct integer underflow
+  (ZDI-CAN-33549). The vulnerability causes an out-of-bounds heap write
+  when processing RDMA descriptors in smbdirect_connection_rdma_xmit().
+  KASAN reports and GPF crashes involving smbdirect/rxe_mr_copy are strong
+  indicators of exploitation.
+author: al4n4n (Dadb0d)
+date: 2026-10-24
+references:
+  - https://github.com/al4n4n/ZDI-CAN-33549
+tags:
+  - attack.initial_access
+  - attack.t1190
+  - cve.zdi-can-33549
+logsource:
+  product: linux
+  service: kernel
+detection:
+  selection_kasan:
+    - 'BUG: KASAN: slab-out-of-bounds in rxe_mr_copy'
+    - 'BUG: KASAN: slab-out-of-bounds in copy_data'
+  selection_gpf:
+    - 'general protection fault*4141414141414141'
+  selection_workqueue:
+    - 'Workqueue: ksmbd*smbdirect'
+    - 'smbdirect_connection_destroy_mem_pools'
+  condition: selection_kasan or (selection_gpf and selection_workqueue)
+falsepositives:
+  - Kernel bugs in unrelated RDMA workloads (check call trace for ksmbd)
+level: critical
