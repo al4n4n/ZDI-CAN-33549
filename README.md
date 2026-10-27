@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="#the-bug">The Bug</a> · <a href="#check-non-destructive">Check</a> · <a href="#the-crash">Exploit</a> · <a href="#detection-rules">Detection</a> · <a href="#downstream-impact">Impact</a> · <a href="https://blog.al4n4n.com">Write-up</a>
+  <a href="#the-bug">The Bug</a> · <a href="#check-non-destructive">Check</a> · <a href="#the-crash">Exploit</a> · <a href="#detection-rules">Detection</a> · <a href="#downstream-impact">Impact</a> · <a href="https://blog.al4n4n.com/ZDI-CAN-33549-ksmbd-SMB-Direct-Integer-Underflow/">Write-up</a>
 </p>
 
 ---
@@ -24,7 +24,7 @@
 
 An integer underflow in `smbdirect_connection_rdma_xmit()` allows an unauthenticated* attacker to write 1024+ bytes past the end of an 8-byte kernel heap allocation via a crafted SMB2 WRITE with RDMA descriptors. The corruption overwrites adjacent SLAB objects, giving the attacker control of kernel pointers. KASAN catches it as a `slab-out-of-bounds` write; without KASAN the kernel crashes with a general protection fault at `0x4141414141414141`.
 
-**Author:** [al4n4n](https://github.com/al4n4n) (Dadb0d) · **Write-up:** [blog.al4n4n.com](https://blog.al4n4n.com) · **Fixed in:** commit [`5b8ce2e`](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=5b8ce2e5670ebe31970b6718403197ae51d47e43)
+**Author:** [al4n4n](https://github.com/al4n4n) (Dadb0d) · **Write-up:** [blog.al4n4n.com/ZDI-CAN-33549...](https://blog.al4n4n.com/ZDI-CAN-33549-ksmbd-SMB-Direct-Integer-Underflow/) · **Fixed in:** commit [`5b8ce2e`](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=5b8ce2e5670ebe31970b6718403197ae51d47e43)
 
 \* Authentication is required to reach the WRITE command, but NTLMv2 auth to a share is sufficient.
 
